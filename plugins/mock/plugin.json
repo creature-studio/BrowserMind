@@ -1,0 +1,17 @@
+{
+  "id": "mock",
+  "name": "Mock Provider",
+  "version": "1.0.0",
+  "description": "Reference provider used by tests, the simulator and the acceptance demo. Its adapter is written by hand (no SelectorAdapter) to prove that a plugin may implement the AIAdapter interface however it wants.",
+  "homepage": "https://github.com/creature-studio/BrowserMind",
+  "author": "BrowserMind",
+  "accent": "#8b5cf6",
+  "capabilities": ["chat", "file_upload", "stop", "new_chat"],
+  "matchPatterns": ["https://mock.browsermind.local/*"],
+  "states": {
+    "ready": "ready",
+    "busy": "generating",
+    "blocked": "sign-in-required",
+    "waiting": "page-loading"
+  }
+}

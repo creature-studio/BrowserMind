@@ -1,0 +1,17 @@
+{
+  "id": "chatgpt",
+  "name": "ChatGPT Web",
+  "version": "1.0.0",
+  "description": "Drives chatgpt.com / chat.openai.com. Handles the ProseMirror contenteditable composer, the result-streaming class and the stop button.",
+  "homepage": "https://chatgpt.com",
+  "author": "BrowserMind",
+  "accent": "#10a37f",
+  "capabilities": ["chat", "file_upload", "image_input", "stop", "new_chat", "tools"],
+  "matchPatterns": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
+  "states": {
+    "ready": "ready",
+    "busy": "streaming",
+    "blocked": "login-required",
+    "waiting": "loading"
+  }
+}

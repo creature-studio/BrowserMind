@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.output/
+.wxt/
+.wxt-*/
+coverage/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+.vite/
+.idea/
+.vscode/*
+!.vscode/extensions.json
