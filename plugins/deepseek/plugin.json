@@ -1,0 +1,17 @@
+{
+  "id": "deepseek",
+  "name": "DeepSeek Chat",
+  "version": "1.0.0",
+  "description": "Drives chat.deepseek.com: types into the composer, presses Enter, tracks the R1 thinking phase and waits for the answer to stop streaming.",
+  "homepage": "https://chat.deepseek.com",
+  "author": "BrowserMind",
+  "accent": "#4d6bfe",
+  "capabilities": ["chat", "file_upload", "stop", "new_chat", "deep_think", "search"],
+  "matchPatterns": ["https://chat.deepseek.com/*"],
+  "states": {
+    "ready": "ready",
+    "busy": "generating",
+    "blocked": "login-required",
+    "waiting": "loading"
+  }
+}

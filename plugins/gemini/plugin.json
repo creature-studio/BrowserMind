@@ -1,0 +1,65 @@
+{
+  "id": "gemini",
+  "name": "Gemini Web",
+  "version": "1.0.0",
+  "description": "Drives gemini.google.com. This plugin ships no code at all: it is pure plugin.json, proving that a new provider can be added by dropping a folder into plugins/.",
+  "homepage": "https://gemini.google.com",
+  "author": "BrowserMind",
+  "accent": "#4285f4",
+  "capabilities": ["chat", "file_upload", "image_input", "search", "stop", "new_chat"],
+  "matchPatterns": ["https://gemini.google.com/*"],
+  "states": {
+    "ready": "ready",
+    "busy": "generating",
+    "blocked": "sign-in-required",
+    "waiting": "loading"
+  },
+  "selectors": {
+    "input": [
+      "rich-textarea .ql-editor[contenteditable=\"true\"]",
+      "div.ql-editor[contenteditable=\"true\"]",
+      "div[contenteditable=\"true\"][role=\"textbox\"]",
+      "textarea[aria-label*=\"prompt\"]"
+    ],
+    "sendButton": [
+      "button.send-button",
+      "button[aria-label=\"Send message\"]",
+      "button[aria-label*=\"Send\"]"
+    ],
+    "submitKeys": ["Enter"],
+    "response": [
+      "model-response message-content .markdown",
+      "model-response .markdown",
+      ".model-response-text"
+    ],
+    "streaming": [
+      ".loading-indicator",
+      "button.stop-button:not([hidden])",
+      "button[aria-label=\"Stop response\"]:not([hidden])"
+    ],
+    "busy": ["button.stop-button:not([hidden])"],
+    "ready": ["rich-textarea .ql-editor[contenteditable=\"true\"]"],
+    "blocked": [
+      ".sign-in-wall:not([hidden])",
+      "[data-test-id=\"sign-in-required\"]"
+    ],
+    "fileInput": ["input.file-input", "input[type=\"file\"]"],
+    "attachButton": ["button.upload-button", "button[aria-label*=\"Add files\"]"],
+    "newChat": ["button.new-chat-button", "button[aria-label*=\"New chat\"]", "a[href=\"/app\"]"],
+    "stopButton": ["button.stop-button:not([hidden])", "button[aria-label=\"Stop response\"]:not([hidden])"],
+    "userMessage": ["user-query .query-text", ".query-text"],
+    "actions": [
+      {
+        "id": "toggle-deep-research",
+        "label": "Deep research",
+        "kind": "toggle",
+        "selector": "button[aria-label*=\"Deep research\"]",
+        "stateSelector": "button[aria-label*=\"Deep research\"]"
+      }
+    ],
+    "quietMs": 700,
+    "pollMs": 120,
+    "stepTimeoutMs": 10000,
+    "transcriptLimit": 20
+  }
+}
