@@ -1,0 +1,101 @@
+name: CI
+
+# The plugin build & packaging pipeline.
+#
+#   verify   — full checklist (typecheck, tests, plugin/entry checks, demo,
+#              plugins:build, extension build, MCP round-trip) on every
+#              push and pull request.
+#   package  — on pushes to main (or version tags): package every plugin
+#              folder (with zips) + build & zip the extension, then upload
+#              both as release artifacts.
+#
+# Runs the exact same commands as the README verification checklist
+# (`npm run verify`), so a green pipeline == a green checklist.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  verify:
+    name: Verify (typecheck, tests, checks, demo, builds)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies (runs plugins:sync)
+        run: npm ci
+
+      - name: Run the full verification checklist
+        run: npm run verify
+
+      - name: Show packaged plugin tree
+        run: |
+          echo "::group::build/plugins"
+          find build/plugins -type f | sort
+          echo "::endgroup::"
+
+  package:
+    name: Package plugins + extension
+    needs: verify
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies (runs plugins:sync)
+        run: npm ci
+
+      - name: Package all plugins (with zips)
+        run: npm run plugins:build:zip
+
+      - name: Build + zip the extension
+        run: npm run ext:zip
+
+      - name: Show package manifest
+        run: |
+          echo "::group::build/plugins/index.json"
+          cat build/plugins/index.json
+          echo "::endgroup::"
+
+      - name: Upload packaged plugins
+        uses: actions/upload-artifact@v4
+        with:
+          # The whole tree: index.json, every plugin folder, and .zips/ —
+          # a newly added plugin folder is picked up without touching CI.
+          name: browsermind-plugins
+          path: build/plugins
+          if-no-files-found: error
+
+      - name: Upload extension zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: browsermind-extension
+          path: packages/extension/.output/browsermind-chrome.zip
+          if-no-files-found: error

@@ -202,6 +202,32 @@ browsermind install ./my-provider.json --persist   # → plugins/my-provider/plu
 # or, from an agent: browser_ai_install_plugin { manifest: { … } }
 ```
 
+### Building & packaging plugins
+
+`npm run plugins:build` runs the packaging pipeline: it scans `plugins/`, validates every
+manifest with the same `validateManifest` the registry uses, bundles each code plugin's
+`adapter.ts` (+ its local imports, e.g. `selectors.ts`) into a single ESM `adapter.js`,
+and writes a hash-verified build tree:
+
+```
+build/plugins/
+  index.json         ← what was built: id, version, kind, per-file sha256
+  <id>/plugin.json
+  <id>/adapter.js    ← code plugins only; @browsermind/* imports stay external
+  .zips/             ← with --zip: one zip per plugin + one combined archive
+```
+
+The packaged tree is a first-class `--plugins` input — `browsermind serve
+--plugins build/plugins` runs entirely on built artifacts, no TypeScript. `--zip` adds
+distributable zips, `--minify` / `--sourcemap` tweak the bundles, `--dir` / `--out` point
+the pipeline at your own folder. Bundled adapters keep `@browsermind/*` external on
+purpose: the host supplies one core instance, so typed errors and `instanceof` checks keep
+working across the boundary.
+
+The same pipeline runs in CI (`.github/workflows/ci.yml`) on every push/PR; on pushes to
+`main` it also packages the extension (`browsermind-chrome.zip`) and uploads both as
+release artifacts.
+
 ### Third-party plugins and trust
 
 | Stage | What happens |
@@ -228,36 +254,40 @@ packages/runtime     BrowserAIRuntime, extension bridge, MCP server, HTTP + dash
 packages/testing     jsdom fake sites for every provider + harness
 packages/extension   WXT MV3 extension (background, content, popup, options, sandbox)
 plugins/*            one folder per provider (plugin.json ± adapter.ts)
-scripts/             generate-plugin-index.mjs + the checks used by the verification checklist
-tests/               vitest suite (contracts, plugins vs fake sites, workers, runtime↔extension wire)
+scripts/             generate-plugin-index.mjs, build-plugins.ts (packaging pipeline) + the checks used by the verification checklist
+tests/               vitest suite (contracts, plugins vs fake sites, workers, runtime↔extension wire, plugin build)
+build/               (generated, git-ignored) packaged plugin builds from `npm run plugins:build`
+.github/workflows/   ci.yml — verify on every push/PR, package plugins + extension on main
 ```
 
 ## 6. Verification checklist
 
-Everything below is reproducible on a clean machine (Node ≥ 20, npm, no Chrome for steps 1–6).
+Everything below is reproducible on a clean machine (Node ≥ 20, npm, no Chrome for steps 1–9).
 Copy-paste the block, or run the single aggregate command at the end.
 
 ```bash
 npm install                 # 1. install + regenerate the plugin index
 npm run typecheck           # 2. zero type errors (runtime + extension projects)
-npm test                    # 3. 57 tests / 5 files
+npm test                    # 3. 68 tests / 6 files
 npm run check:plugins       # 4. every provider against its fake page → 6/6 providers OK
 npm run check:entries       # 5. both core entries + runtime entry → 8/8 entry-point checks OK
 npm run demo                # 6. end-to-end acceptance → Acceptance: 7/7 checks passed
-npm run ext:build           # 7. MV3 build → packages/extension/.output/chrome-mv3
-npm run check:mcp           # 8. real MCP client over stdio → MCP round trip OK
+npm run plugins:build       # 7. packaging pipeline → build/plugins (6 plugins + index.json)
+npm run ext:build           # 8. MV3 build → packages/extension/.output/chrome-mv3
+npm run check:mcp           # 9. real MCP client over stdio → MCP round trip OK
 ```
 
 | # | Command | Expected result | What it proves |
 | --- | --- | --- | --- |
 | 1 | `npm install` | `postinstall` runs `plugins:sync` | a new plugin folder is picked up automatically |
 | 2 | `npm run typecheck` | exit 0, no output | core/runtime/plugins/tests **and** the extension typecheck |
-| 3 | `npm test` | `Tests 57 passed (57)` | see the table below |
+| 3 | `npm test` | `Tests 68 passed (68)` | see the table below |
 | 4 | `npm run check:plugins` | `6/6 providers OK`, `PASS <id>: status=ready …` | every plugin drives a page: typing, submitting, streaming, capabilities |
 | 5 | `npm run check:entries` | `8/8 entry-point checks OK` | `@browsermind/core/browser` stays browser-safe, runtime entry loads |
 | 6 | `npm run demo` | `Acceptance: 7/7 checks passed in …ms` | multiple workers in parallel, runtime plugin install, stable agent surface |
-| 7 | `npm run ext:build` | `Built extension`, `Σ Total size: 147.27 kB` | MV3 manifest: host permissions + content-script matches generated from plugins, sandbox page |
-| 8 | `npm run check:mcp` | `MCP round trip OK` | an MCP client lists 13 tools, sends a message, snapshots, installs a plugin |
+| 7 | `npm run plugins:build` | `6 packaged plugin(s) … → build/plugins` | the packaging pipeline: validated manifests, bundled adapters, hash-verified `index.json`, valid zips |
+| 8 | `npm run ext:build` | `Built extension`, `Σ Total size: 147.27 kB` | MV3 manifest: host permissions + content-script matches generated from plugins, sandbox page |
+| 9 | `npm run check:mcp` | `MCP round trip OK` | an MCP client lists 13 tools, sends a message, snapshots, installs a plugin |
 
 What the test suite (step 3) covers:
 
@@ -268,6 +298,7 @@ What the test suite (step 3) covers:
 | `tests/plugins.test.ts` | 30 | all six providers against their fake sites: send, stream, stop, upload, snapshot has **no selectors**, login wall, stalled provider, broken selector candidates |
 | `tests/worker-manager.test.ts` | 9 | worker ids, async `send_message`/`get_response`, task serialisation per worker, parallelism across workers, typed errors |
 | `tests/extension-bridge.test.ts` | 8 | the runtime ⇄ extension protocol over a **real WebSocket**: session list, remote task with streamed progress, DOM tunnel, late tab, plugin catalog push, disconnect cleanup |
+| `tests/plugin-build.test.ts` | 11 | the packaging pipeline: bundles code plugins (core kept external), manifest-only declaratives, hash-verified `index.json`, invalid-manifest/duplicate-id failures, valid zips, and the packaged tree loading back through the runtime plugin loader |
 
 Optional extras:
 
@@ -282,8 +313,10 @@ npx tsx scripts/check-plugins.ts --dir ./my-plugins   # point the plugin check a
 grep -rniE "deepseek|chatgpt|claude|gemini|grok" packages/core/src packages/runtime/src
 ```
 
-Aggregate: **`npm run verify`** runs 2 → 8 in order (`typecheck`, `test`, `check:plugins`,
-`check:entries`, `demo`, `ext:build`, `check:mcp`).
+Aggregate: **`npm run verify`** runs 2 → 9 in order (`typecheck`, `test`, `check:plugins`,
+`check:entries`, `demo`, `plugins:build`, `ext:build`, `check:mcp`) — the same sequence CI
+runs on every push/PR (`.github/workflows/ci.yml`), which additionally packages and uploads
+the plugins + extension on pushes to `main`.
 
 ### Not covered by the checklist
 

@@ -2,7 +2,7 @@
   "name": "browsermind",
   "version": "0.1.0",
   "private": true,
-  "description": "Browser AI Worker Runtime \u2014 turn any web chat AI into an orchestrated Browser Worker via MCP",
+  "description": "Browser AI Worker Runtime — turn any web chat AI into an orchestrated Browser Worker via MCP",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -23,7 +23,9 @@
     "check:plugins": "tsx scripts/check-plugins.ts",
     "check:entries": "tsx scripts/check-entries.ts",
     "check:mcp": "tsx scripts/mcp-smoke.ts",
-    "verify": "npm run typecheck && npm test && npm run check:plugins && npm run check:entries && npm run demo && npm run ext:build && npm run check:mcp",
+    "plugins:build": "tsx scripts/build-plugins.ts",
+    "plugins:build:zip": "tsx scripts/build-plugins.ts --zip",
+    "verify": "npm run typecheck && npm test && npm run check:plugins && npm run check:entries && npm run demo && npm run plugins:build && npm run ext:build && npm run check:mcp",
     "ext:dev": "wxt -c packages/extension/wxt.config.ts",
     "ext:build": "wxt build -c packages/extension/wxt.config.ts",
     "ext:zip": "wxt zip -c packages/extension/wxt.config.ts",
@@ -46,7 +48,8 @@
     "tsx": "^4.19.2",
     "typescript": "^5.6.3",
     "vitest": "^2.1.8",
-    "wxt": "^0.21.4"
+    "wxt": "^0.21.4",
+    "esbuild": "^0.28.0"
   },
   "workspaces": [
     "packages/*"
