@@ -1,0 +1,54 @@
+{
+  "name": "browsermind",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser AI Worker Runtime \u2014 turn any web chat AI into an orchestrated Browser Worker via MCP",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "plugins:sync": "node scripts/generate-plugin-index.mjs",
+    "postinstall": "npm run plugins:sync",
+    "typecheck": "npm run typecheck:node && npm run typecheck:ext",
+    "typecheck:node": "tsc --noEmit -p tsconfig.json",
+    "typecheck:ext": "wxt prepare -c packages/extension/wxt.config.ts && tsc --noEmit -p packages/extension/tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "runtime": "tsx packages/runtime/src/cli.ts",
+    "mcp": "tsx packages/runtime/src/cli.ts mcp",
+    "serve": "tsx packages/runtime/src/cli.ts serve",
+    "demo": "tsx packages/runtime/src/cli.ts demo",
+    "dev:runtime": "tsx watch packages/runtime/src/cli.ts serve --simulate all --http-port 8787",
+    "check:plugins": "tsx scripts/check-plugins.ts",
+    "check:entries": "tsx scripts/check-entries.ts",
+    "check:mcp": "tsx scripts/mcp-smoke.ts",
+    "verify": "npm run typecheck && npm test && npm run check:plugins && npm run check:entries && npm run demo && npm run ext:build && npm run check:mcp",
+    "ext:dev": "wxt -c packages/extension/wxt.config.ts",
+    "ext:build": "wxt build -c packages/extension/wxt.config.ts",
+    "ext:zip": "wxt zip -c packages/extension/wxt.config.ts",
+    "setup": "npm install"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.0",
+    "jsdom": "^26.0.0",
+    "ws": "^8.18.0",
+    "zod": "^3.23.8",
+    "@browsermind/core": "*",
+    "@browsermind/runtime": "*",
+    "@browsermind/testing": "*"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.287",
+    "@types/jsdom": "^21.1.7",
+    "@types/node": "^22.10.1",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8",
+    "wxt": "^0.21.4"
+  },
+  "workspaces": [
+    "packages/*"
+  ]
+}
