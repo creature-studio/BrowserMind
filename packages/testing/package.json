@@ -1,0 +1,16 @@
+{
+  "name": "@browsermind/testing",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Fake chat sites + jsdom harness so every plugin can be tested headlessly",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@browsermind/core": "*",
+    "jsdom": "^26.0.0"
+  }
+}
