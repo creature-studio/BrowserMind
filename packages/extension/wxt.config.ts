@@ -16,6 +16,11 @@ export default defineConfig({
   root,
   srcDir: 'src',
   outDir: '.output',
+  zip: {
+    // Stable artifact name for CI (the extension has no package.json, so the
+    // default template would emit "…-undefined-chrome.zip").
+    artifactTemplate: '{{name}}-{{browser}}.zip',
+  },
   targetBrowsers: ['chrome'],
   manifest: {
     name: 'BrowserMind — Browser AI Worker',
