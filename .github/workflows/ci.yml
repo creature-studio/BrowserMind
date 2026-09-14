@@ -5,9 +5,12 @@ name: CI
 #   verify   — full checklist (typecheck, tests, plugin/entry checks, demo,
 #              plugins:build, extension build, MCP round-trip) on every
 #              push and pull request.
-#   package  — on pushes to main (or version tags): package every plugin
-#              folder (with zips) + build & zip the extension, then upload
-#              both as release artifacts.
+#   package  — on pushes to main: package every plugin folder (with zips)
+#              + build & zip the extension, then upload both as artifacts.
+#
+# Version tags (`v*`) are handled by release.yml instead, which additionally
+# creates a GitHub Release with the packaged assets — they are deliberately
+# not listed here so the two workflows never double-run.
 #
 # Runs the exact same commands as the README verification checklist
 # (`npm run verify`), so a green pipeline == a green checklist.
@@ -15,7 +18,6 @@ name: CI
 on:
   push:
     branches: [main]
-    tags: ['v*']
   pull_request:
 
 permissions:
