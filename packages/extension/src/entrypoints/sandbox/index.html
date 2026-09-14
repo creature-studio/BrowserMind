@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>BrowserMind — Sandboxed Plugin Host</title>
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; background: #0b0f19; color: #e6ebf5; margin: 0; padding: 24px; }
+      h1 { font-size: 15px; margin: 0 0 4px; }
+      p { color: #8b98b4; font-size: 13px; margin: 4px 0; }
+      pre { background: #131a2a; border: 1px solid #26304a; border-radius: 10px; padding: 12px; overflow: auto; font-size: 12px; }
+      .ok { color: #3ddc97; } .err { color: #ff6b6b; }
+    </style>
+  </head>
+  <body>
+    <h1>BrowserMind sandboxed plugin host</h1>
+    <p>Untrusted third-party plugin code runs here — no cookies, no extension APIs, DOM access only through the tunnelled driver.</p>
+    <p id="status">starting…</p>
+    <pre id="log"></pre>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

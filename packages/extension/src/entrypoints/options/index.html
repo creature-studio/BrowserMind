@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BrowserMind — Settings &amp; Plugins</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; background: #0b0f19; color: #e6ebf5; font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; }
+      header { padding: 18px 24px; border-bottom: 1px solid #26304a; }
+      h1 { font-size: 16px; margin: 0; }
+      h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: #8b98b4; margin: 0 0 10px; }
+      main { padding: 20px 24px 60px; display: grid; gap: 22px; max-width: 900px; }
+      section { border: 1px solid #26304a; background: #131a2a; border-radius: 12px; padding: 16px; }
+      label { display: block; font-size: 12.5px; color: #8b98b4; margin-bottom: 4px; }
+      input[type="text"], textarea { width: 100%; background: #1b2436; border: 1px solid #26304a; color: inherit; border-radius: 8px; padding: 8px; font: inherit; }
+      textarea { min-height: 150px; font-family: ui-monospace, monospace; font-size: 12.5px; }
+      button { font: inherit; padding: 7px 12px; border-radius: 8px; border: 1px solid #26304a; background: #1b2436; color: inherit; cursor: pointer; }
+      button.primary { background: #6d8cff; border-color: transparent; color: #08101f; font-weight: 600; }
+      .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+      table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+      td, th { text-align: left; padding: 6px 4px; border-bottom: 1px solid #26304a; vertical-align: top; }
+      .pill { border: 1px solid #26304a; border-radius: 999px; padding: 1px 8px; font-size: 11px; color: #8b98b4; }
+      .pill.ok { color: #3ddc97; }
+      .muted { color: #8b98b4; font-size: 12px; }
+      .status { margin-top: 8px; font-size: 12.5px; }
+      .ok { color: #3ddc97; } .err { color: #ff6b6b; }
+    </style>
+  </head>
+  <body>
+    <header><h1>BrowserMind — settings &amp; provider plugins</h1></header>
+    <main>
+      <section>
+        <h2>Runtime connection</h2>
+        <label for="runtime-url">Runtime WebSocket endpoint</label>
+        <input id="runtime-url" type="text" spellcheck="false" />
+        <div class="row">
+          <button class="primary" id="save">Save &amp; reconnect</button>
+          <button id="status-refresh">Refresh status</button>
+          <span class="pill" id="status-pill">…</span>
+        </div>
+        <div class="status muted" id="status-text"></div>
+      </section>
+
+      <section>
+        <h2>Installed provider plugins</h2>
+        <table>
+          <thead><tr><th>Plugin</th><th>Match patterns</th><th>Source</th><th>Host access</th></tr></thead>
+          <tbody id="plugins"></tbody>
+        </table>
+        <div class="row">
+          <button id="grant">Grant access to all plugin patterns</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Install a provider plugin (no code, no rebuild)</h2>
+        <p class="muted">
+          Paste a manifest with a selector pack. The extension registers the content script for the new pattern
+          (granting host access when Chrome asks) and the runtime registers the same plugin as a worker provider.
+        </p>
+        <textarea id="manifest" spellcheck="false">{
+  "id": "acme-chat",
+  "name": "ACME Chat",
+  "version": "1.0.0",
+  "matchPatterns": ["https://chat.example.com/*"],
+  "capabilities": ["chat", "stop"],
+  "selectors": {
+    "input": ["#prompt-textarea", "textarea"],
+    "sendButton": ["button[data-testid='send-button']"],
+    "submitKeys": ["Enter"],
+    "response": [".message.assistant .markdown"],
+    "streaming": ["button[data-testid='stop-button']:not([hidden])"],
+    "stopButton": ["button[data-testid='stop-button']:not([hidden])"],
+    "ready": ["#prompt-textarea"],
+    "quietMs": 700
+  }
+}</textarea>
+        <div class="row">
+          <button class="primary" id="install">Install in extension</button>
+          <button id="install-runtime">Install in extension + runtime</button>
+        </div>
+        <div class="status" id="install-status"></div>
+      </section>
+
+      <section>
+        <h2>Sandboxed plugin host (Phase 4)</h2>
+        <p class="muted">
+          Run an untrusted third-party adapter in the CSP sandbox. It receives a tunnelled DOM driver for the
+          selected tab and is exposed to the runtime as a worker with <code>location: "sandbox"</code>.
+        </p>
+        <div class="row">
+          <label for="sandbox-tab">Target tab</label>
+          <select id="sandbox-tab"></select>
+          <label for="sandbox-plugin">Plugin id</label>
+          <input id="sandbox-plugin" type="text" value="acme-chat" style="width: 180px" />
+          <button id="sandbox-open">Open sandbox host</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Diagnostics</h2>
+        <div class="row"><button id="logs">Show recent background logs</button></div>
+        <pre id="log-output" class="muted" style="max-height:220px; overflow:auto"></pre>
+      </section>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
