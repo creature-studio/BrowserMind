@@ -202,6 +202,15 @@ browsermind install ./my-provider.json --persist   # → plugins/my-provider/plu
 # or, from an agent: browser_ai_install_plugin { manifest: { … } }
 ```
 
+### Third-party plugins and trust
+
+| Stage | What happens |
+| --- | --- |
+| **Install** | `browsermind install manifest.json --persist` (or `browser_ai_install_plugin` from an agent) validates the manifest, writes `plugins/<id>/plugin.json` and broadcasts the catalog to every connected extension. |
+| **Mirror** | The background worker stores the manifest; the options page lists it with a **Grant** button. A plugin only ever sees pages whose patterns were granted (`optional_host_permissions`). |
+| **Activate** | Granting registers a content script for exactly those patterns at runtime (`chrome.scripting.registerContentScripts`) — no rebuild, no restart. |
+| **Execute** | Declarative plugins are pure data. Code plugins are either bundled at build time (reviewable in this repo) or hosted in the extension **sandbox**, which has no page access at all: the DOM is reached through the tunneled `dom.call` RPC. |
+
 | Provider | Plugin | Patterns | Capabilities |
 | --- | --- | --- | --- |
 | ChatGPT | `plugins/chatgpt` (code) | `chatgpt.com/*`, `chat.openai.com/*` | chat, file_upload, image_input, stop, new_chat, tools |
@@ -268,6 +277,9 @@ curl -s localhost:8787/api/health      # same JSON the tools return
 curl -N localhost:8787/api/events      # SSE stream of worker/plugin events
 npm run dev:runtime                    # watch mode with `--simulate all`
 npx tsx scripts/check-plugins.ts --dir ./my-plugins   # point the plugin check at your own folder
+
+# no provider branching in core: every hit below is a comment or a tool description
+grep -rniE "deepseek|chatgpt|claude|gemini|grok" packages/core/src packages/runtime/src
 ```
 
 Aggregate: **`npm run verify`** runs 2 → 8 in order (`typecheck`, `test`, `check:plugins`,
