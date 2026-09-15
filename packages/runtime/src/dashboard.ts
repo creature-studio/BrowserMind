@@ -1,8 +1,9 @@
 /**
- * Live dashboard served by `browsermind serve`.
+ * The lightweight debug view at `/dashboard`.
  *
- * Shows workers, statuses, plugin catalog and a streaming chat box so a human
- * can see exactly what the agent sees: workers, not web pages.
+ * The real human-facing UI is the standalone console page (`packages/console`,
+ * served at `/`); this one stays because it is a 200-line read-only look at the
+ * same data that is handy when debugging a runtime from a terminal.
  */
 export const DASHBOARD_HTML = `<!doctype html>
 <html lang="en">

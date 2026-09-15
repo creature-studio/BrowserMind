@@ -3,8 +3,8 @@ name: CI
 # The plugin build & packaging pipeline.
 #
 #   verify   — full checklist (typecheck, tests, plugin/entry checks, demo,
-#              plugins:build, extension build, MCP round-trip) on every
-#              push and pull request.
+#              plugins:build, console:build + console checks, extension build,
+#              MCP round-trip) on every push and pull request.
 #   package  — on pushes to main: package every plugin folder (with zips)
 #              + build & zip the extension, then upload both as artifacts.
 #

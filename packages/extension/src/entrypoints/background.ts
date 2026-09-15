@@ -5,7 +5,7 @@
  *   - own the plugin registry built from `plugins/`,
  *   - keep the WebSocket to the runtime alive (see `RuntimeBridge`),
  *   - turn matching tabs into sessions (`TabManager`),
- *   - answer popup/options requests.
+ *   - answer the console/options pages, and open the console on click.
  *
  * DOM work never happens here: it belongs to the content script (or, for
  * untrusted third-party plugins, to the sandbox page).
@@ -77,6 +77,28 @@ export default defineBackground(() => {
   });
 
   browser.tabs.onRemoved.addListener((tabId) => tabs.detachTab(tabId, 'tab-closed'));
+
+  /* ------------------- standalone console page (no popup) ------------------- */
+
+  // The toolbar icon does not open a popup any more: a person steering a fleet of
+  // workers needs a page, so the action focuses/opens `console.html` — the very
+  // same standalone console `browsermind serve` serves at `/`.
+  const CONSOLE_PATH = '/console.html';
+  browser.action?.onClicked?.addListener?.(async () => {
+    const url = browser.runtime.getURL(CONSOLE_PATH);
+    const existing = await browser.tabs.query({ url }).catch(() => []);
+    const tab = existing.find((candidate) => candidate.id != null);
+    if (tab?.id != null) {
+      await browser.tabs.update(tab.id, { active: true }).catch(() => undefined);
+      return;
+    }
+    await browser.tabs.create({ url, active: true });
+  });
+
+  // Relay task frames to that page, so an answer renders while it is being written.
+  bridge.onRuntimeEvent = (event) => {
+    void browser.runtime.sendMessage({ type: 'browsermind/event', event }).catch(() => undefined);
+  };
 
   browser.runtime.onConnect.addListener((port) => {
     if (port.name === 'browsermind/page') {
@@ -162,9 +184,9 @@ export default defineBackground(() => {
             sendResponse({ ok: true, data: recentLogs } satisfies MessageResponse<string[]>);
             return;
           case 'runtime.request': {
-            // Anything the popup/options want from the runtime (workers,
-            // snapshots, send_message…) goes through the same RPC channel the
-            // runtime itself serves to MCP.
+            // Anything the console/options pages want from the runtime (workers,
+            // snapshots, send_message…) goes through the same tool table the
+            // runtime serves to MCP and to REST — one surface, three clients.
             const data = await bridge.request(request.method, request.params, 180_000);
             sendResponse({ ok: true, data } satisfies MessageResponse);
             return;

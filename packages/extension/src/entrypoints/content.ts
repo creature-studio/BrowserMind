@@ -78,7 +78,7 @@ export default defineContentScript({
           };
         },
         'page.highlight': async () => {
-          // Small affordance for the popup: outline the composer so the user
+          // Small affordance for the console page: outline the composer so the user
           // can see which element the plugin is driving.
           const composer = document.querySelector<HTMLElement>('textarea, [contenteditable="true"]');
           if (!composer) return { ok: false };

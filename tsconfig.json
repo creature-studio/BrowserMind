@@ -28,6 +28,7 @@
   },
   "include": [
     "packages/core/**/*.ts",
+    "packages/console/**/*.ts",
     "packages/runtime/**/*.ts",
     "plugins/**/*.ts",
     "scripts/**/*.ts",

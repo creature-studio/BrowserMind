@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BrowserMind 控制台 — Browser AI Worker Runtime</title>
+    <!--
+      Standalone page. `npm run console:build` inlines the stylesheet and the
+      bundle below into one self-contained HTML file (`build/console/console.html`)
+      and writes it into the runtime, so `browsermind serve` can hand this exact
+      page out at `/` with no static folder, no CDN and no extension popup.
+    -->
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="app" data-console="browsermind"><noscript>BrowserMind 控制台需要 JavaScript。</noscript></div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

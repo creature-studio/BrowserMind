@@ -99,6 +99,19 @@
       </section>
 
       <section>
+        <h2>Standalone console（独立页面，不是弹窗）</h2>
+        <p class="muted">
+          点击工具栏图标就会打开这个页面；这里也可以直接开。它和 <code>http://127.0.0.1:8787/</code> 是同一个控制台，
+          只是通过扩展的 RPC 连 runtime。若你更想用 HTTP 那一份，可以在下面填 runtime 的 dashboard 地址。
+        </p>
+        <div class="row">
+          <button class="primary" id="open-console">打开控制台页面</button>
+          <button id="open-runtime">打开 runtime 控制台</button>
+        </div>
+        <div class="status" id="console-status"></div>
+      </section>
+
+      <section>
         <h2>Diagnostics</h2>
         <div class="row"><button id="logs">Show recent background logs</button></div>
         <pre id="log-output" class="muted" style="max-height:220px; overflow:auto"></pre>

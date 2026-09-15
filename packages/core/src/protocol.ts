@@ -67,6 +67,13 @@ export const RUNTIME_METHODS = {
   workers: 'runtime.workers',
   /** Pushed whenever the plugin catalog changes. */
   plugins: 'plugin.catalog',
+  /** Pushed for every worker/task event, so extension pages can stream live. */
+  events: 'runtime.events',
+  /**
+   * `browser_ai.*` calls an extension page makes on behalf of a human
+   * (the standalone console). Handled by the runtime's tool table.
+   */
+  request: 'extension.request',
 } as const;
 
 /** Methods/events an extension is expected to send. */

@@ -1,18 +1,23 @@
 /**
- * HTTP surface: REST mirror of the MCP tools plus a small live dashboard and an
+ * HTTP surface: REST mirror of the MCP tools, the standalone console page and an
  * SSE stream. Useful for debugging, for scripting in languages without MCP
- * clients, and as the human-facing window into the runtime.
+ * clients, and as the human-facing window into the runtime — the console is a
+ * normal web page (`/`), not an extension popup.
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { toErrorPayload } from '@browsermind/core';
+import { toolCatalog } from './tool-catalog.js';
+import { createRuntimeApi, httpErrorPayload } from './rpc-api.js';
 import type { BrowserAIRuntime } from './runtime.js';
 import { DASHBOARD_HTML } from './dashboard.js';
+import { CONSOLE_HTML } from './generated/console-html.js';
 
 export interface HttpServerOptions {
   runtime: BrowserAIRuntime;
   port?: number;
   host?: string;
-  /** Serve the dashboard at `/`. */
+  /** Serve the standalone console page at `/` (and `/console`). */
+  consolePage?: boolean;
+  /** Serve the lightweight debug dashboard at `/dashboard`. */
   dashboard?: boolean;
   logger?: (message: string, meta?: Record<string, unknown>) => void;
 }
@@ -52,47 +57,19 @@ export async function startHttpServer(options: HttpServerOptions): Promise<HttpS
     }
   }
 
-  // Paths mirror `toolCatalog[].http` one-to-one so the REST and MCP surfaces
-  // never drift apart.
-  const routes: Record<string, (body: any) => Promise<unknown>> = {
-    '/api/health': async () => runtime.status(),
-    '/api/workers': async () => runtime.listWorkers(),
-    '/api/plugins': async () => runtime.listPlugins(),
-    '/api/context': async () => ({
-      workers: runtime.listWorkers(),
-      plugins: runtime.listPlugins(),
-      extension: runtime.status().extension,
-    }),
-    '/api/send_message': async (body) => {
-      const result = await runtime.sendMessage({
-        worker: body.worker,
-        provider: body.provider,
-        message: body.message ?? body.prompt,
-        wait: body.wait,
-        timeoutMs: body.timeout_ms ?? body.timeoutMs,
-        newChat: body.new_chat ?? body.newChat,
-        files: body.files,
-      });
-      return { worker: result.workerId, taskId: result.taskId, response: result.response, durationMs: result.durationMs };
-    },
-    '/api/get_response': async (body) =>
-      runtime.getResponse({
-        worker: body.worker,
-        provider: body.provider,
-        taskId: body.task_id ?? body.taskId,
-        wait: body.wait,
-        timeoutMs: body.timeout_ms ?? body.timeoutMs,
-      }),
-    '/api/snapshot': async (body) =>
-      runtime.snapshot({ worker: body.worker, provider: body.provider, transcript: body.transcript }),
-    '/api/open_worker': async (body) => runtime.openWorker({ provider: body.provider, url: body.url, reuse: body.reuse }),
-    '/api/close_worker': async (body) => runtime.closeWorker(body.worker),
-    '/api/stop_worker': async (body) => runtime.stopWorker(body.worker),
-    '/api/new_chat': async (body) => runtime.newChat(body.worker),
-    '/api/invoke_action': async (body) => runtime.invoke(body.worker, body.action_id ?? body.actionId, body.value),
-    '/api/install_plugin': async (body) =>
-      runtime.installPlugin(body.manifest, { persist: body.persist, replace: body.replace ?? true }),
-  };
+  // Paths are derived from `toolCatalog[].http`, so the REST surface and the MCP
+  // tools cannot drift apart: one catalog entry means one handler here. Every
+  // operation is also reachable as `/api/<tool-name-without-prefix>` and, for
+  // clients that would rather not know any paths at all, as
+  // `/api/rpc/<browser_ai_tool_name>` — which is what the standalone console page
+  // calls, so a renamed path can never break the UI.
+  const api = createRuntimeApi(runtime);
+  const routes: Record<string, (body: Record<string, unknown>) => Promise<unknown>> = {};
+  for (const tool of toolCatalog) {
+    const handler = (body: Record<string, unknown>) => api.call(tool.name, body);
+    routes[tool.http] = handler;
+    routes[`/api/${tool.name.replace(/^browser_ai_/, '')}`] = handler;
+  }
 
   const server = createServer((request, response) => {
     void handle(request, response);
@@ -110,13 +87,21 @@ export async function startHttpServer(options: HttpServerOptions): Promise<HttpS
       return;
     }
 
-    if (url.pathname === '/' || url.pathname === '/index.html') {
+    if (CONSOLE_ROUTES.includes(url.pathname)) {
+      if (options.consolePage === false) {
+        response.writeHead(404).end('console page disabled');
+        return;
+      }
+      sendHtml(response, CONSOLE_HTML || missingConsolePage());
+      return;
+    }
+
+    if (url.pathname === '/dashboard' || url.pathname === '/dashboard.html') {
       if (options.dashboard === false) {
         response.writeHead(404).end('dashboard disabled');
         return;
       }
-      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      response.end(DASHBOARD_HTML);
+      sendHtml(response, DASHBOARD_HTML);
       return;
     }
 
@@ -136,7 +121,8 @@ export async function startHttpServer(options: HttpServerOptions): Promise<HttpS
       return;
     }
 
-    const route = routes[url.pathname];
+    const rpcMatch = /^\/api\/rpc\/([a-z0-9_]+)$/i.exec(url.pathname);
+    const route = routes[url.pathname] ?? (rpcMatch ? (body2: Record<string, unknown>) => api.call(qualifyMethod(rpcMatch[1]!), body2) : undefined);
     if (!route) {
       response.writeHead(404, { 'content-type': 'application/json' });
       response.end(JSON.stringify({ error: 'not_found', path: url.pathname }));
@@ -150,9 +136,9 @@ export async function startHttpServer(options: HttpServerOptions): Promise<HttpS
       response.end(JSON.stringify(result, null, 2));
       log('http request', { path: url.pathname, method: request.method });
     } catch (error) {
-      const payload = toErrorPayload(error);
-      response.writeHead(payload.code === 'not_found' ? 404 : 400, { 'content-type': 'application/json' });
-      response.end(JSON.stringify({ error: payload.code, message: payload.message }, null, 2));
+      const { status, body: payload } = httpErrorPayload(error);
+      response.writeHead(status, { 'content-type': 'application/json' });
+      response.end(JSON.stringify(payload, null, 2));
     }
   }
 
@@ -164,10 +150,13 @@ export async function startHttpServer(options: HttpServerOptions): Promise<HttpS
   });
   const address = server.address();
   const actualPort = typeof address === 'object' && address ? address.port : port;
+  // `0.0.0.0` binds every interface; it is not a URL you can click, so report the
+  // loopback form of the same listener (that is what the console page opens).
+  const displayHost = host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host;
 
   return {
     port: actualPort,
-    url: `http://${host}:${actualPort}`,
+    url: `http://${displayHost}:${actualPort}`,
     server,
     async close() {
       for (const unsubscribe of subscriptions) unsubscribe();
@@ -189,4 +178,33 @@ async function readBody(request: IncomingMessage): Promise<Record<string, unknow
   } catch {
     return { raw };
   }
+}
+
+/* ------------------------------- page helpers ------------------------------- */
+
+/** Where the standalone console lives. `/` so it is the first thing you see. */
+const CONSOLE_ROUTES = ['/', '/index.html', '/console', '/console.html', '/app'];
+
+function sendHtml(response: ServerResponse, html: string): void {
+  response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+  response.end(html);
+}
+
+/** Shown when the page was never built — explains the one command that fixes it. */
+function missingConsolePage(): string {
+  return `<!doctype html><html lang="zh"><head><meta charset="utf-8"/>
+<title>BrowserMind — 控制台未构建</title>
+<style>body{background:#0b0f19;color:#e6ebf5;font:15px/1.7 ui-sans-serif,system-ui,sans-serif;margin:0;padding:48px}
+code{background:#131a2a;border:1px solid #26304a;border-radius:6px;padding:2px 8px;color:#6d8cff}
+a{color:#6d8cff}</style></head><body>
+<h1>BrowserMind 控制台还没有构建</h1>
+<p>控制台是一个独立的网页，构建产物会被打进 runtime。跑一次就行：</p>
+<p><code>npm run console:build</code> 然后刷新这个页面</p>
+<p>（<code>npm install</code> 已经会自动构建；只想看轻量调试面板：<a href="/dashboard">/dashboard</a>）</p>
+</body></html>`;
+}
+
+/** `/api/rpc/send_message` and `/api/rpc/browser_ai_send_message` are the same call. */
+function qualifyMethod(name: string): string {
+  return name.startsWith('browser_ai_') ? name : `browser_ai_${name}`;
 }

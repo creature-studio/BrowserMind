@@ -31,6 +31,7 @@ import {
   type WorkerDescriptor,
 } from '@browsermind/core';
 import { ExtensionBridge, type ExtensionClient } from './extension-bridge.js';
+import { createRuntimeApi, type RuntimeApi } from './rpc-api.js';
 import { createSimulatorProvider } from './simulator.js';
 
 export interface BrowserAIRuntimeOptions {
@@ -75,6 +76,12 @@ export class BrowserAIRuntime {
   readonly workers: WorkerManager;
   readonly logger: Logger;
   readonly bridge: ExtensionBridge | null;
+  /**
+   * `browser_ai.*` operations behind one table: the HTTP API, the MCP server and
+   * the extension's own pages all call exactly these methods, so no client can
+   * drift away from the agent-facing surface.
+   */
+  readonly api: RuntimeApi;
   #options: BrowserAIRuntimeOptions;
   #simulator: { provider: SessionProvider; destroy(): Promise<void> } | null = null;
   #started = false;
@@ -94,6 +101,7 @@ export class BrowserAIRuntime {
       defaultTimeoutMs: options.taskTimeoutMs ?? 180_000,
       statusPollMs: options.statusPollMs ?? 0,
     });
+    this.api = createRuntimeApi(this);
   }
 
   static async create(options: BrowserAIRuntimeOptions = {}): Promise<BrowserAIRuntime> {
@@ -141,10 +149,22 @@ export class BrowserAIRuntime {
    */
   async attachExtension(client: ExtensionClient): Promise<void> {
     client.peer.handle(RUNTIME_METHODS.state, () => this.status());
+    // The extension's own pages (the standalone console) are just another client
+    // of the tool surface: every `browser_ai.*` method is answered on this socket,
+    // so the human-facing UI and the agent see exactly the same API.
+    for (const method of this.api.methodNames) {
+      client.peer.handle(method, (params) => this.api.call(method, params as Record<string, unknown>));
+    }
     const push = () => {
       if (client.peer.closed) return;
       client.peer.notify(RUNTIME_METHODS.workers, { workers: this.listWorkers() });
       client.peer.notify(RUNTIME_METHODS.plugins, { plugins: this.listPlugins(), manifests: this.declarativeManifests() });
+    };
+    // Streaming: task frames are relayed so an extension page can render an
+    // answer as it arrives instead of polling.
+    const relay = (kind: string) => (payload: unknown) => {
+      if (client.peer.closed) return;
+      client.peer.notify(RUNTIME_METHODS.events, { kind, payload });
     };
     const unsubscribe = [
       this.workers.events.on('worker.added', push),
@@ -153,6 +173,10 @@ export class BrowserAIRuntime {
       this.workers.events.on('task.started', push),
       this.workers.events.on('task.completed', push),
       this.workers.events.on('task.failed', push),
+      this.workers.events.on('task.started', relay('task.started')),
+      this.workers.events.on('task.progress', relay('task.progress')),
+      this.workers.events.on('task.completed', relay('task.completed')),
+      this.workers.events.on('task.failed', relay('task.failed')),
     ];
     this.#clientSubscriptions.set(client.id, unsubscribe);
     await this.workers.addProvider(client.provider);
