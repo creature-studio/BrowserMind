@@ -1,7 +1,7 @@
 /**
  * Browser-safe core entry point.
  *
- * Everything a content script, popup, sandbox or bundled plugin may import.
+ * Everything a content script, an extension page, a sandbox or a plugin may import.
  * Node-only modules (plugin loader, file system access) live in the main entry
  * so bundlers never try to include `node:fs` in an extension.
  */

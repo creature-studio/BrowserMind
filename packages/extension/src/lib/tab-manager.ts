@@ -53,7 +53,7 @@ interface PendingPort {
 export class TabManager {
   readonly logger: Logger;
   readonly sessions = new Map<string, TrackedSession>();
-  /** Called whenever the session inventory changes (popup refresh, runtime push). */
+  /** Called whenever the session inventory changes (console refresh, runtime push). */
   onChange: ((sessions: TrackedSession[]) => void) | null = null;
   #peersByTab = new Map<number, PendingPort>();
 

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BrowserMind 控制台</title>
+    <!--
+      Standalone console page inside the extension: the toolbar icon opens this in
+      its own tab (there is no popup). The markup and the whole UI come from
+      `packages/console`, so this tab and `http://127.0.0.1:8787/` are the same page
+      talking to the same `browser_ai.*` surface through a different transport.
+    -->
+  </head>
+  <body>
+    <div id="app" data-console="browsermind"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

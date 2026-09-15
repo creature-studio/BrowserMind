@@ -32,8 +32,9 @@ export default defineConfig({
     host_permissions: [...PLUGIN_MATCH_PATTERNS],
     optional_host_permissions: ['https://*/*', 'http://*/*'],
     action: {
-      default_title: 'BrowserMind workers',
-      default_popup: 'popup.html',
+      // No `default_popup` on purpose: the toolbar icon opens the standalone
+      // console page in its own tab (see `entrypoints/background.ts`).
+      default_title: '打开 BrowserMind 控制台',
     },
     options_ui: {
       page: 'options.html',

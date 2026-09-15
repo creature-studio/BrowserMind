@@ -105,6 +105,27 @@ $('sandbox-open').addEventListener('click', () => {
   void browser.tabs.create({ url });
 });
 
+$('open-console').addEventListener('click', () => {
+  void browser.tabs.create({ url: browser.runtime.getURL('/console.html'), active: true });
+});
+
+$('open-runtime').addEventListener('click', async () => {
+  // Derive the dashboard origin from the configured bridge URL (ws://host:8765/… → http://host:8787/).
+  const response = await sendMessage<ExtensionState>({ type: 'state.get' });
+  const runtimeUrl = response.data?.runtimeUrl ?? '';
+  const status = $('console-status');
+  try {
+    const url = new URL(runtimeUrl);
+    const origin = `${url.protocol === 'wss:' ? 'https' : 'http'}://${url.hostname}:8787/console`;
+    status.textContent = `打开 ${origin}`;
+    status.className = 'status ok';
+    void browser.tabs.create({ url: origin, active: true });
+  } catch (error) {
+    status.textContent = `无法从 “${runtimeUrl}” 推出 runtime 地址：${String(error)}`;
+    status.className = 'status err';
+  }
+});
+
 $('logs').addEventListener('click', async () => {
   const response = await sendMessage<string[]>({ type: 'logs.get' });
   $('log-output').textContent = (response.data ?? []).join('\n') || 'no logs yet';

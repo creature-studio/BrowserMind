@@ -1,0 +1,16 @@
+{
+  "name": "@browsermind/console",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Standalone console page — a real web page (also mounted inside the extension), never a popup",
+  "main": "./src/main.ts",
+  "types": "./src/main.ts",
+  "exports": {
+    ".": "./src/main.ts",
+    "./mount": "./src/app.ts",
+    "./types": "./src/types.ts",
+    "./styles.css": "./styles.css",
+    "./src/*": "./src/*"
+  }
+}

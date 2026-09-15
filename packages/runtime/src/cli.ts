@@ -100,7 +100,9 @@ Commands
 Options
   --plugins <dir>         Plugin folder (default: ./plugins)
   --port <n>              Extension bridge port (default 8765)
-  --http-port <n>         Dashboard/API port (default 8787)
+  --http-port <n>         Console page + REST API port (default 8787)
+  --no-console            Do not serve the standalone console page at /
+  --no-dashboard          Do not serve the debug dashboard at /dashboard
   --simulate <a,b|all>    Run providers headlessly (no browser needed)
   --providers <a,b|all>   Providers used by "demo"
   --timeout <ms>          Task timeout (default 180000)
@@ -181,10 +183,16 @@ async function main(): Promise<number> {
       const http = await startHttpServer({
         runtime,
         port: numberFlag(args, 'http-port', 8787),
+        // The standalone console page is the human-facing UI; `/dashboard` stays
+        // as the tiny debug view. Both can be switched off for headless use.
+        consolePage: args.flags['no-console'] !== true,
+        dashboard: args.flags['no-dashboard'] !== true,
         logger: (message, meta) => logger.debug(message, meta),
       });
       const status = runtime.status();
-      log('info', `dashboard        ${http.url}`);
+      log('info', `console page     ${http.url}/  (standalone page, no extension popup needed)`);
+      log('info', `debug dashboard  ${http.url}/dashboard`);
+      log('info', `REST mirror      ${http.url}/api/health  ·  ${http.url}/api/rpc/browser_ai_list_workers`);
       log('info', `extension bridge ws://0.0.0.0:${started.extensionPort}/browsermind/extension`);
       log('info', `plugins          ${status.plugins.length} (${status.plugins.map((plugin) => plugin.id).join(', ')})`);
       log('info', `workers          ${status.workers.length}${simulate ? ` (simulated: ${simulate.join(', ')})` : ''}`);

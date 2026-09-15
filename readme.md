@@ -43,8 +43,11 @@ once and the MCP server, the HTTP API and the docs are all generated from that c
 | `browser_ai_worker_context` | one-shot briefing: workers, capabilities, usage guide |
 
 Resources: `browsermind://workers` and `browsermind://plugins`.
-The same surface is available over HTTP (`/api/*`, plus SSE `/api/events`) and as a dashboard,
-so non-MCP agents can use it too.
+
+The same surface is available over HTTP (every tool has a REST path, plus SSE `/api/events`),
+under a generic `POST /api/rpc/<tool_name>` endpoint, and in a **standalone console page** — a
+real web page (`http://127.0.0.1:8787/`) rather than an extension popup, so a human drives the
+exact same workers an agent sees. Non-MCP agents can use it too.
 
 ```jsonc
 // agent → runtime → page, and back
@@ -59,7 +62,8 @@ so non-MCP agents can use it too.
 | **Core** | `packages/core` | contracts (`BrowserAIPlugin`, `AIAdapter`), `PluginRegistry`, `WorkerManager`, DOM-driver abstraction, RPC, session protocol, plugin loader. No provider names anywhere. |
 | **Runtime** | `packages/runtime` | `BrowserAIRuntime`, extension WebSocket bridge, MCP server, HTTP API + dashboard, CLI, headless simulator. |
 | **Testing** | `packages/testing` | jsdom **fake chat sites** for all six providers + harness helpers. |
-| **Extension** | `packages/extension` | WXT-built MV3 extension: background (tabs + bridge), content script (page agent), popup, options, sandboxed plugin host. |
+| **Extension** | `packages/extension` | WXT-built MV3 extension: background (tabs + bridge), content script (page agent), options, sandboxed plugin host — and the **console page**, opened in its own tab (no popup). |
+| **Console** | `packages/console` | The standalone page: workers, chat, snapshots, plugin install, self-check. One source, mounted by the runtime over HTTP and by the extension over RPC. |
 | **Plugins** | `plugins/*` | One folder per provider: `plugin.json` (metadata + selectors) and optionally `adapter.ts`. |
 
 Five design decisions make the whole thing work:
@@ -82,11 +86,28 @@ Five design decisions make the whole thing work:
    bundled at build time. Third-party manifests can be installed at runtime and run in the
    extension sandbox, never in the page.
 
+### The standalone console page (`packages/console`)
+
+An extension popup is the wrong shape for this job: ~380 px, gone the moment you click
+somewhere else — and, as it turned out, unable to send anything at all, because the popup called
+RPC methods the runtime never served. So the human UI is a page:
+
+| | |
+| --- | --- |
+| Where | `http://127.0.0.1:8787/` (also `/console`, `/app`), and `console.html` inside the extension — the toolbar icon opens/reuses that tab |
+| What | worker list with live status, chat with streamed answers, snapshot + capability chips (page actions), provider tab control, plugin install, event log, MCP/REST snippets, and a **自检 (self-check)** panel that spells out what is missing |
+| Protocol | only `browser_ai.*` tool names: `/api/rpc/<tool>` over HTTP, `runtime.request` over the extension bridge. Nothing private, so the page cannot drift from what an agent sees |
+| Build | `npm run console:build` → one self-contained HTML file (~37 kB, CSS + JS inlined, no CDN, no static folder) written into the runtime as `packages/runtime/src/generated/console-html.ts`; runs from `postinstall`, watch it with `npm run console:watch` |
+| Tests | `npm run check:console` (build → serve → drive it) and `tests/console.test.ts` (the whole UI in jsdom against a stub transport) |
+
+`/dashboard` still serves the old 200-line debug view for terminal work; the console is the page
+people actually use.
+
 ## 3. Quick start
 
 ```bash
 git clone <this repo> && cd BrowserMind
-npm install                # also runs `npm run plugins:sync` (regenerates the extension index)
+npm install                # also regenerates the plugin index and builds the console page
 npm run demo               # headless acceptance run — no browser, no agent needed
 ```
 
@@ -122,15 +143,20 @@ Acceptance: 7/7 checks passed in <N>ms
 **Drive real browser tabs.** Three terminals:
 
 ```bash
-npm run serve                    # runtime: extension bridge ws://127.0.0.1:8765 + dashboard :8787
+npm run serve                    # console page + REST at :8787, extension bridge ws://127.0.0.1:8765
 npm run ext:build                # build the extension into packages/extension/.output/chrome-mv3
 # chrome://extensions → Developer mode → Load unpacked → pick that folder
 ```
 
-Open a chat page (e.g. `https://chat.deepseek.com`), click the BrowserMind popup — it shows the
-worker and the runtime link. The runtime URL lives in the extension's options page
-(default `ws://127.0.0.1:8765/browsermind/extension`). Now `browser_ai_list_workers` returns the
-real tab, e.g. `deepseek-1`, and prompts run in that page.
+Then open **http://127.0.0.1:8787/** — that standalone page is the whole UI: pick a worker, type a
+prompt, watch the answer stream in, install a provider, read the self-check. Prefer the toolbar?
+Clicking the BrowserMind icon opens the *same* console in its own tab (`console.html`), wired to
+the runtime through the extension's RPC link instead of HTTP — there is no popup. The runtime URL
+lives in the extension's options page (default `ws://127.0.0.1:8765/browsermind/extension`). Now
+`browser_ai_list_workers` returns the real tab, e.g. `deepseek-1`, and prompts run in that page.
+
+No browser yet? `npm run serve -- --simulate all` gives you six fake provider pages to drive from
+that very same page.
 
 ## 4. Writing a plugin
 
@@ -252,9 +278,10 @@ release artifacts.
 packages/core        contracts, registry, worker manager, DOM drivers, RPC, session protocol
 packages/runtime     BrowserAIRuntime, extension bridge, MCP server, HTTP + dashboard, CLI, simulator
 packages/testing     jsdom fake sites for every provider + harness
-packages/extension   WXT MV3 extension (background, content, popup, options, sandbox)
+packages/console     the standalone console page (one source: served by the runtime, mounted by the extension)
+packages/extension   WXT MV3 extension (background, content, console page, options, sandbox)
 plugins/*            one folder per provider (plugin.json ± adapter.ts)
-scripts/             generate-plugin-index.mjs, build-plugins.ts (packaging pipeline) + the checks used by the verification checklist
+scripts/             generate-plugin-index.mjs, build-plugins.ts + build-console.ts (packaging pipelines) and the checks used by the verification checklist
 tests/               vitest suite (contracts, plugins vs fake sites, workers, runtime↔extension wire, plugin build)
 build/               (generated, git-ignored) packaged plugin builds from `npm run plugins:build`
 .github/workflows/   ci.yml — verify on every push/PR, package plugins + extension on main
@@ -262,32 +289,36 @@ build/               (generated, git-ignored) packaged plugin builds from `npm r
 
 ## 6. Verification checklist
 
-Everything below is reproducible on a clean machine (Node ≥ 20, npm, no Chrome for steps 1–9).
+Everything below is reproducible on a clean machine (Node ≥ 20, npm, no Chrome for steps 1–10).
 Copy-paste the block, or run the single aggregate command at the end.
 
 ```bash
-npm install                 # 1. install + regenerate the plugin index
-npm run typecheck           # 2. zero type errors (runtime + extension projects)
-npm test                    # 3. 68 tests / 6 files
+npm install                 # 1. install + regenerate the plugin index + build the console page
+npm run typecheck           # 2. zero type errors (node projects incl. packages/console, + extension)
+npm test                    # 3. 89 tests / 9 files
 npm run check:plugins       # 4. every provider against its fake page → 6/6 providers OK
 npm run check:entries       # 5. both core entries + runtime entry → 8/8 entry-point checks OK
 npm run demo                # 6. end-to-end acceptance → Acceptance: 7/7 checks passed
 npm run plugins:build       # 7. packaging pipeline → build/plugins (6 plugins + index.json)
-npm run ext:build           # 8. MV3 build → packages/extension/.output/chrome-mv3
-npm run check:mcp           # 9. real MCP client over stdio → MCP round trip OK
+npm run console:build       # 8. standalone page → build/console + the runtime's generated module
+npm run check:console       # 9. build + serve + drive the page → 12/12 console checks OK
+npm run ext:build           # 10. MV3 build → packages/extension/.output/chrome-mv3 (console.html, no popup)
+npm run check:mcp           # 11. real MCP client over stdio → MCP round trip OK
 ```
 
 | # | Command | Expected result | What it proves |
 | --- | --- | --- | --- |
-| 1 | `npm install` | `postinstall` runs `plugins:sync` | a new plugin folder is picked up automatically |
-| 2 | `npm run typecheck` | exit 0, no output | core/runtime/plugins/tests **and** the extension typecheck |
-| 3 | `npm test` | `Tests 68 passed (68)` | see the table below |
+| 1 | `npm install` | `postinstall` runs `plugins:sync` + `console:build` | a new plugin folder and the console page are picked up automatically |
+| 2 | `npm run typecheck` | exit 0, no output | core/runtime/console/plugins/tests **and** the extension typecheck |
+| 3 | `npm test` | `Tests 89 passed (89)` | see the table below |
 | 4 | `npm run check:plugins` | `6/6 providers OK`, `PASS <id>: status=ready …` | every plugin drives a page: typing, submitting, streaming, capabilities |
 | 5 | `npm run check:entries` | `8/8 entry-point checks OK` | `@browsermind/core/browser` stays browser-safe, runtime entry loads |
 | 6 | `npm run demo` | `Acceptance: 7/7 checks passed in …ms` | multiple workers in parallel, runtime plugin install, stable agent surface |
 | 7 | `npm run plugins:build` | `6 packaged plugin(s) … → build/plugins` | the packaging pipeline: validated manifests, bundled adapters, hash-verified `index.json`, valid zips |
-| 8 | `npm run ext:build` | `Built extension`, `Σ Total size: 147.27 kB` | MV3 manifest: host permissions + content-script matches generated from plugins, sandbox page |
-| 9 | `npm run check:mcp` | `MCP round trip OK` | an MCP client lists 13 tools, sends a message, snapshots, installs a plugin |
+| 8 | `npm run console:build` | `37.2 kB → build/console/console.html + …/generated/console-html.ts` | the standalone page: bundled, CSS/JS inlined, and committed where the runtime serves it |
+| 9 | `npm run check:console` | `12/12 console checks OK` | the page is served at `/`, self-contained, and every tool it calls answers (health, workers, send/stream, snapshot without selectors) |
+| 10 | `npm run ext:build` | `Built extension`, `Σ Total size: 174.92 kB` | MV3 manifest: host permissions + content-script matches from plugins, `console.html`, sandbox page, **no popup** |
+| 11 | `npm run check:mcp` | `MCP round trip OK` | an MCP client lists 13 tools, sends a message, snapshots, installs a plugin |
 
 What the test suite (step 3) covers:
 
@@ -299,13 +330,19 @@ What the test suite (step 3) covers:
 | `tests/worker-manager.test.ts` | 9 | worker ids, async `send_message`/`get_response`, task serialisation per worker, parallelism across workers, typed errors |
 | `tests/extension-bridge.test.ts` | 8 | the runtime ⇄ extension protocol over a **real WebSocket**: session list, remote task with streamed progress, DOM tunnel, late tab, plugin catalog push, disconnect cleanup |
 | `tests/plugin-build.test.ts` | 11 | the packaging pipeline: bundles code plugins (core kept external), manifest-only declaratives, hash-verified `index.json`, invalid-manifest/duplicate-id failures, valid zips, and the packaged tree loading back through the runtime plugin loader |
+| `tests/console.test.ts` | 7 | the standalone page in jsdom: worker cards, optimistic send + adopted answer, streamed text from live events, adopting an agent-started task, action chips (never selectors), manifest install, self-check hints |
+| `tests/console-page.test.ts` | 9 | the page build (one self-contained file, inlining markers, catalog invariants) and serving: `/` + `/console` + `/app`, `/dashboard`, all 13 tools reachable three ways, REST errors machine-readable, SSE |
+| `tests/runtime-api.test.ts` | 5 | the tool table over the **extension's** socket: list/health, `send_message` (snake *and* camel case), relayed task frames, snapshot/install, and typed errors for unknown methods |
 
 Optional extras:
 
 ```bash
-npm run serve                          # dashboard http://127.0.0.1:8787 + bridge ws://127.0.0.1:8765
+npm run serve                          # console page http://127.0.0.1:8787/ + bridge ws://127.0.0.1:8765
+npm run serve -- --simulate all        # same page, six fake providers, no browser at all
+npm run console:watch                  # rebuild the page while editing packages/console
 curl -s localhost:8787/api/health      # same JSON the tools return
-curl -N localhost:8787/api/events      # SSE stream of worker/plugin events
+curl -s -X POST localhost:8787/api/rpc/browser_ai_list_workers   # any tool, by name
+curl -N localhost:8787/api/events      # SSE stream of worker/task events
 npm run dev:runtime                    # watch mode with `--simulate all`
 npx tsx scripts/check-plugins.ts --dir ./my-plugins   # point the plugin check at your own folder
 
@@ -313,18 +350,19 @@ npx tsx scripts/check-plugins.ts --dir ./my-plugins   # point the plugin check a
 grep -rniE "deepseek|chatgpt|claude|gemini|grok" packages/core/src packages/runtime/src
 ```
 
-Aggregate: **`npm run verify`** runs 2 → 9 in order (`typecheck`, `test`, `check:plugins`,
-`check:entries`, `demo`, `plugins:build`, `ext:build`, `check:mcp`) — the same sequence CI
-runs on every push/PR (`.github/workflows/ci.yml`), which additionally packages and uploads
-the plugins + extension on pushes to `main`.
+Aggregate: **`npm run verify`** runs 2 → 11 in order (`typecheck`, `test`, `check:plugins`,
+`check:entries`, `demo`, `plugins:build`, `console:build`, `check:console`, `ext:build`,
+`check:mcp`) — the same sequence CI runs on every push/PR (`.github/workflows/ci.yml`), which
+additionally packages and uploads the plugins + extension on pushes to `main`.
 
 ### Not covered by the checklist
 
 Honest scope limits — everything here is by design, not an accident:
 
 - **No real-browser automation.** This repo has no Chrome; the extension build, its manifest,
-  the sandbox page and every message handler are typechecked and built, but the final
-  `chrome://extensions` walkthrough is manual (section 3).
+  the console tab, the sandbox page and every message handler are typechecked and built, and the
+  page's behaviour is covered in jsdom — but the final `chrome://extensions` walkthrough (load
+  unpacked, click the icon, watch the tab open) is manual (section 3).
 - **Live sites change.** Selectors are re-verified against the fake sites, not the internet.
   A provider whose markup moved is fixed in one file (`plugins/<id>/selectors.ts`), never in core.
 - **First-run permissions.** The extension ships host permissions for the shipped providers;
@@ -337,15 +375,30 @@ Honest scope limits — everything here is by design, not an accident:
 | --- | --- | --- |
 | `--plugins <dir>` | `./plugins` | plugin folder to scan |
 | `--port <n>` | `8765` | extension bridge port (WebSocket) |
-| `--http-port <n>` | `8787` | HTTP API + dashboard port |
+| `--http-port <n>` | `8787` | console page + HTTP API port |
+| `--no-console` | — | do not serve the standalone console page at `/` |
+| `--no-dashboard` | — | do not serve the debug dashboard at `/dashboard` |
 | `--simulate <a,b\|all>` | — | run providers headlessly (no browser) |
 | `--log-level <l>` | `info` | `debug \| info \| warn \| error \| silent` |
 | `--persist` | — | `install`: write `plugins/<id>/plugin.json` |
 
 Runtime options (`BrowserAIRuntime.create({ … })`): `pluginDir`, `plugins`, `simulate`,
 `extensionPort`, `startBridge`, `statusPollMs`, `taskTimeoutMs`, `logger`, `logLevel`.
-Extension options page: runtime WebSocket URL, per-plugin host permission grants, plugin install
-(local manifest, optionally pushed to the runtime), sandbox opener, logs.
+HTTP server options: `port`, `host`, `consolePage`, `dashboard`, `logger`, `runtime`.
+
+| HTTP surface | |
+| --- | --- |
+| `/`, `/console`, `/app` | the standalone console page (built by `console:build`, inlined — no static folder) |
+| `/dashboard` | the small debug view (same data, 200 lines, handy from a terminal) |
+| `/api/<path>` | one REST route per tool, from `toolCatalog[].http` |
+| `/api/<name-without-prefix>` | the same routes by tool name (`/api/list_workers`) |
+| `POST /api/rpc/browser_ai_<name>` | every tool by name, no path knowledge needed — what the console page calls |
+| `/api/events` | SSE: `hello`, `worker`, `worker.removed`, `task.started/progress/completed/failed` |
+
+Extension pages: the toolbar icon opens `console.html` in its own tab (there is no popup, and no
+injected overlay either — the page is a real page). The options page holds the runtime WebSocket
+URL, per-plugin host permission grants, plugin install (local manifest, optionally pushed to the
+runtime), a launcher for the console/runtime page, the sandbox opener and logs.
 
 ## 8. Design notes
 
@@ -361,3 +414,14 @@ Extension options page: runtime WebSocket URL, per-plugin host permission grants
 - **Failure honesty.** A page that shows a login wall reports `status: blocked`; a provider that
   stops mid-answer returns `partial: true` with the streamed text; a worker never silently
   pretends to be ready.
+- **Why a standalone page instead of a popup?** A popup is a 380 px tooltip with delusions of
+  grandeur: it closes when focus leaves it, kills in-flight requests with it, and cannot show a
+  fleet of streaming workers side by side. `packages/console` is a normal page, so it survives
+  switching tabs, can be opened twice, is debuggable in a real devtools, and works before any
+  extension is loaded at all (`--simulate`). The extension does not get its own second UI either:
+  its toolbar icon opens `console.html`, the same source mounted over the bridge.
+- **One tool table, three transports.** `packages/runtime/src/rpc-api.ts` binds every
+  `browser_ai.*` name to a runtime call, and MCP, `/api/*`, `/api/rpc/<name>` and the extension
+  bridge all answer from it. Clients therefore cannot drift: when the popup stopped working it was
+  precisely because it called a tool name nobody had registered, and the fix is one loop in
+  `attachExtension` rather than a second, private UI protocol.

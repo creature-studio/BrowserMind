@@ -41,6 +41,7 @@ export class RuntimeBridge {
   #tabs: TabManager;
   #onChange: (() => void) | null = null;
   #workers: unknown[] = [];
+  #pageEvents: ((event: { kind: string; payload: unknown }) => void) | null = null;
   #plugins: PluginDescriptor[] = [];
   #lastError: string | undefined;
 
@@ -63,6 +64,15 @@ export class RuntimeBridge {
 
   set onChange(handler: () => void) {
     this.#onChange = handler;
+  }
+
+  /**
+   * Live worker/task frames from the runtime (`runtime.events`). The standalone
+   * console tab subscribes to this so a human watches an answer being written,
+   * not a spinner.
+   */
+  set onRuntimeEvent(handler: ((event: { kind: string; payload: unknown }) => void) | null) {
+    this.#pageEvents = handler;
   }
 
   async connect(): Promise<void> {
@@ -106,6 +116,11 @@ export class RuntimeBridge {
   }
 
   #onRuntimeEvent(event: { method: string; params: unknown }): void {
+    if (event.method === RUNTIME_METHODS.events) {
+      const payload = event.params as { kind?: string; payload?: unknown } | undefined;
+      if (payload?.kind) this.#pageEvents?.({ kind: payload.kind, payload: payload.payload });
+      return;
+    }
     if (event.method === RUNTIME_METHODS.workers) {
       const params = event.params as { workers?: unknown[] } | unknown[];
       this.#workers = Array.isArray(params) ? params : (params?.workers ?? []);
@@ -186,7 +201,7 @@ export class RuntimeBridge {
     }, delay);
   }
 
-  /** Force a reconnect (used by the popup button). */
+  /** Force a reconnect (used by the console's 重连 button). */
   async reconnect(): Promise<void> {
     this.#peer?.close();
     this.#socket?.close();

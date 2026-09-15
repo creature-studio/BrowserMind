@@ -1,4 +1,4 @@
-/** Typed messages between the popup/options pages and the background worker. */
+/** Typed messages between the extension's pages (console, options) and the background worker. */
 import { browser } from 'wxt/browser';
 import type { PluginManifest, WorkerDescriptor } from '@browsermind/core/browser';
 
@@ -41,4 +41,13 @@ export interface MessageResponse<T = unknown> {
 
 export async function sendMessage<T = unknown>(message: ExtensionMessage): Promise<MessageResponse<T>> {
   return (await browser.runtime.sendMessage(message)) as MessageResponse<T>;
+}
+
+/**
+ * Background → page push. The standalone console tab subscribes to these so a
+ * streamed answer renders as it arrives instead of being polled.
+ */
+export interface ExtensionPush {
+  type: 'browsermind/event';
+  event: { kind: string; payload: unknown };
 }
